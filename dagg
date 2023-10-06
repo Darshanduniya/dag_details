@@ -1,0 +1,44 @@
+from airflow import settings
+from airflow.models import DagRun, DAG
+from datetime import datetime
+from sqlalchemy import and_
+
+def fetch_and_display_dag_status():
+    # Define the custom date range
+    custom_start_date = datetime(2023, 10, 1)  # Set your custom start date here
+    custom_end_date = datetime(2023, 10, 5)    # Set your custom end date here
+
+    # Initialize the Airflow session and query the metadata database
+    session = settings.Session()
+
+    # Define the SQLAlchemy-compatible date range filter
+    date_range_filter = and_(
+        DagRun.execution_date >= custom_start_date,
+        DagRun.execution_date <= custom_end_date,
+    )
+
+    # Fetch all DAG runs within the custom date range
+    dag_runs = session.query(DagRun).filter(
+        date_range_filter,
+        DagRun.dag_id != 'example_dag_id',  # Exclude specific DAGs by ID if needed
+    ).all()
+
+    # Initialize a list to store DAG status information
+    dag_status_info = []
+
+    # Iterate through the DAG runs and check their status
+    for dag_run in dag_runs:
+        dag = DAG(dag_run.dag_id, start_date=custom_start_date, end_date=custom_end_date)
+        dag_run_status = dag_run.get_state()
+        dag_status_info.append((dag_run.dag_id, dag_run.execution_date, dag_run_status))
+
+    session.close()
+
+    # Print the DAG status information in a table format
+    print("{:<20} {:<20} {:<20}".format("DAG Name", "Execution Date", "Status"))
+    print("-" * 60)
+    for dag_name, execution_date, status in dag_status_info:
+        print("{:<20} {:<20} {:<20}".format(dag_name, execution_date, status))
+
+if __name__ == "__main__":
+    fetch_and_display_dag_status()
