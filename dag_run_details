@@ -1,0 +1,64 @@
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from datetime import datetime
+
+def fetch_and_display_dag_status():
+    from airflow import settings
+    from airflow.models import DagRun, DAG
+    from datetime import datetime
+
+    # Set the date range for today
+    start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date = datetime.now()
+
+    # Initialize the Airflow session and query the metadata database
+    session = settings.Session()
+
+    # Fetch all DAG runs for today
+    dag_runs = session.query(DagRun).filter(
+        DagRun.dag_id != 'example_dag_id',  # Exclude specific DAGs by ID if needed
+        DagRun.execution_date >= start_date,
+        DagRun.execution_date <= end_date,
+    ).all()
+
+    # Initialize a list to store DAG status information
+    dag_status_info = []
+
+    # Iterate through the DAG runs and check their status
+    for dag_run in dag_runs:
+        dag = DAG(dag_run.dag_id, start_date=start_date, end_date=end_date)
+        dag_run_status = dag_run.get_state()
+        dag_status_info.append((dag_run.dag_id, dag_run.execution_date, dag_run_status))
+
+    session.close()
+
+    # Print the DAG status information in a table format
+    print("{:<20} {:<20} {:<20}".format("DAG Name", "Execution Date", "Status"))
+    print("-" * 60)
+    for dag_name, execution_date, status in dag_status_info:
+        print("{:<20} {:<20} {:<20}".format(dag_name, execution_date, status))
+
+# Define the default_args and DAG object
+default_args = {
+    'owner': 'airflow',
+    'start_date': datetime(2023, 10, 6),
+    'schedule_interval': None,  # This DAG is manually triggered
+}
+
+dag = DAG(
+    'display_dag_status',
+    default_args=default_args,
+    catchup=False,  # Disable catchup to only process runs for today
+    description='Display DAG status for today',
+    schedule_interval=None,  # This DAG is manually triggered
+)
+
+# Create a PythonOperator to execute the fetch_and_display_dag_status function
+display_status_task = PythonOperator(
+    task_id='display_status',
+    python_callable=fetch_and_display_dag_status,
+    dag=dag,
+)
+
+if __name__ == "__main__":
+    dag.cli()
