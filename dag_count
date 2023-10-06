@@ -1,0 +1,52 @@
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from airflow.utils.dates import days_ago
+from datetime import datetime, timedelta
+from airflow.models import DagRun
+from sqlalchemy import func
+
+# Define a Python function to count DAG runs triggered today
+def count_triggered_dags_today():
+    # Calculate the start and end of the current day in UTC
+    current_date = datetime.utcnow().date()
+    start_of_day = datetime(current_date.year, current_date.month, current_date.day)
+    end_of_day = start_of_day + timedelta(days=1)
+
+    # Query the Airflow database to count DAG runs for today
+    count = (
+        DagRun.query
+        .filter(DagRun.execution_date >= start_of_day, DagRun.execution_date < end_of_day)
+        .count()
+    )
+
+    print(f"Number of DAGs triggered today: {count}")
+
+# Define default_args for the DAG
+default_args = {
+    'owner': 'airflow',
+    'start_date': days_ago(1),  # Start the DAG one day ago to ensure it runs daily
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+# Create the DAG
+dag = DAG(
+    'monitor_triggered_dags',
+    default_args=default_args,
+    schedule_interval=timedelta(days=1),  # Set the schedule interval to run daily
+    catchup=False,  # Prevent catching up on historic DAG runs
+    max_active_runs=1,  # Allow only one instance of the DAG to run at a time
+)
+
+# Define a PythonOperator to execute the counting function
+count_dags_task = PythonOperator(
+    task_id='count_triggered_dags_task',
+    python_callable=count_triggered_dags_today,
+    dag=dag,
+)
+
+# Set the task dependencies
+count_dags_task
+
+if __name__ == "__main__":
+    dag.cli()
